@@ -12,9 +12,14 @@ import (
   "net/http"
   "io/ioutil"
   "./confirm"
+  flag "launchpad.net/gnuflag"
 )
 
-const VERSION = "0.2"
+const VERSION = "0.3"
+
+var helpFlag = flag.Bool("help", false, "Show this screen")
+var tracksFlag = flag.String("tracks", "", "Comma separated list of track_ids eg. 123,231,122")
+var fileFlag = flag.String("file", "", "A file of line separated track_ids")
 
 func output_welcome() {
   fmt.Println()
@@ -24,30 +29,7 @@ func output_welcome() {
 }
 
 func output_help() {
-  fmt.Println("Usage: unearthd-bumpr [track_ids]...")
-  fmt.Println("       unearthd-bumpr < <filename>  (one track_id per line in the file)")
-  fmt.Println()
-  fmt.Println("Help Commands")
-  fmt.Println("--help,--?\t\t\tOutput this message")
-}
-
-func output_help_if_required() {
-  argsWithoutProg := os.Args[1:]
-
-  if len(argsWithoutProg) > 0 {
-    if is_help_arg(argsWithoutProg[0]) {
-      output_help()
-      os.Exit(0)
-    }
-  }
-}
-
-func is_help_arg(input string) (bool) {
-  if ((input == "--help") || (input == "--?") || (input == "/?") || (input == "/help")) {
-    return true
-  } else {
-    return false
-  }
+  flag.Usage()
 }
 
 func output_tracklist(tracks []TrackInfo) (string) {
@@ -99,7 +81,6 @@ func get_track_info(track_id int) (*TrackInfoCollection) {
 
 func hit_jukebox(track_id int, artist_url string) (string) {
   var jukebox_url string
-  // var track_url string
 
   jukebox_url = build_jukebox_url(track_id)
 
@@ -115,7 +96,7 @@ func hit_track_play(track_id string) {
 }
 
 func build_play_url(track_id string) (string) {
-  return fmt.Sprintf("https://www.triplejunearthed.com/play/%d",track_id)
+  return fmt.Sprintf("https://www.triplejunearthed.com/play/%s",track_id)
 }
 
 func build_jukebox_url(track_id int) (string) {
@@ -130,18 +111,39 @@ func full_artist_url(path string) (string) {
   return "https://www.triplejunearthed.com"+path
 }
 
-func track_ids_from_args() ([]int) {
+func hit_mp3_url(url string, etag string) {
+  fmt.Println("Hitting mp3 URL..")
+  http_etag_get(url,etag,"")
+}
+
+func track_ids_from_tracks_flag() ([]int) {
   var track_ids []int
 
-  argsWithoutProg := os.Args[1:]
+  for _,arg := range strings.Split(*tracksFlag,",") {
+    var int_track_id int
+    int_track_id64,_ := strconv.ParseInt(arg,0,0)
+    int_track_id = int(int_track_id64)
+    track_ids = append(track_ids, int_track_id)
+  }
 
-  if len(argsWithoutProg) > 0 {
-    for _,arg := range argsWithoutProg {
+  return track_ids
+}
+
+func track_ids_from_file_flag() ([]int) {
+  var track_ids []int
+  file,err := os.Open(*fileFlag)
+  if err != nil {
+    log.Fatalln("Error opening file")
+  }
+  defer file.Close()
+  scanner := bufio.NewScanner(file)
+  scanner.Split(bufio.ScanLines)
+  for scanner.Scan() {
+      str := scanner.Text()
       var int_track_id int
-      int_track_id64,_ := strconv.ParseInt(arg,0,0)
+      int_track_id64,_ := strconv.ParseInt(str,0,0)
       int_track_id = int(int_track_id64)
       track_ids = append(track_ids, int_track_id)
-    }
   }
   return track_ids
 }
@@ -164,75 +166,88 @@ func track_ids_from_stdin() ([]int) {
   return track_ids
 }
 
-
 func main() {
   var track_ids []int
-  ok := false
+  track_etags := map[string]string{}
+
+  ok := true
 
   output_welcome()
-  output_help_if_required()
 
-  track_ids = append(track_ids,track_ids_from_stdin()...)
-  track_ids = append(track_ids,track_ids_from_args()...)
+  flag.Parse(true)
+  if(*helpFlag) {
+    output_help()
+  } else {
 
-  fmt.Println(track_ids)
+    // If track flag is present, append listed track_ids
+    if(*tracksFlag != "") { track_ids = append(track_ids, track_ids_from_tracks_flag()...) }
 
-  if ok {
-    var track_id int
-    var tracks []TrackInfo
+    // If file flag is present, append track_ids from file
+    if(*fileFlag != "") { track_ids = append(track_ids, track_ids_from_file_flag()...) }
 
-    if len(track_ids) == 0 {
-      for {
-        fmt.Printf("Enter a track_id: ")
-        fmt.Scanf("%d", &track_id)
+    if ok {
+      var track_id int
+      var tracks []TrackInfo
 
-        if track_id == 0 {
-          track_id = 816296
-        }
-        track_ids = append(track_ids, track_id)
-        fmt.Printf("Add more tracks? [y/n] ")
-        if !confirm.AskForConfirmation() {
-          break
-        }
-      }
-    }
+      if len(track_ids) == 0 {
+        for {
+          fmt.Printf("Enter a track_id: ")
+          fmt.Scanf("%d", &track_id)
 
-    fmt.Println("Fetching all the track details...")
-
-    for _,element := range track_ids {
-      tracks = append(tracks, get_track_info(element).Tracks[0])
-    }
-
-    fmt.Println("Track list built.")
-
-    fmt.Println(output_tracklist(tracks))
-
-    fmt.Printf("Is this correct? [y/n] ")
-    if confirm.AskForConfirmation() {
-      for {
-        for _,track := range tracks {
-          if track.Duration == "" {
-            track.Duration = "00:04:42"
+          if track_id == 0 {
+            track_id = 816296
           }
-
-          fmt.Printf("Playing %s-%s\n",track.ArtistTitle, track.Title)
-
-          hit_track_play(track.ID)
-          sleep_for_track_length(track.Duration)
+          track_ids = append(track_ids, track_id)
+          fmt.Printf("Add more tracks? [y/n] ")
+          if !confirm.AskForConfirmation() {
+            break
+          }
         }
       }
-    } else {
-      fmt.Println()
-      fmt.Println("Exiting unearthd-bumpr...")
-      fmt.Println()
-      os.Exit(2)
-    }
-  }
 
+      fmt.Println("Fetching all the track details...")
+
+      for _,element := range track_ids {
+        tracks = append(tracks, get_track_info(element).Tracks[0])
+      }
+
+      fmt.Println("Track list built.")
+
+      fmt.Println(output_tracklist(tracks))
+
+      fmt.Printf("Is this correct? [y/n] ")
+      if confirm.AskForConfirmation() {
+        for {
+          for _,track := range tracks {
+            if track.Duration == "" {
+              track.Duration = "00:04:42"
+            }
+
+            fmt.Printf("Playing %s-%s\n",track.ArtistTitle, track.Title)
+
+            if track_etags[track.URL] == "" {
+              url_headers := http_head(track.URL)
+              track_etags[track.URL] = url_headers["Etag"][0]
+            }
+
+            hit_mp3_url(track.URL,track_etags[track.URL])
+            hit_track_play(track.ID)
+            sleep_for_track_length(track.Duration)
+          }
+        }
+      } else {
+        fmt.Println()
+        fmt.Println("Exiting unearthd-bumpr...")
+        fmt.Println()
+        os.Exit(2)
+      }
+    }
+
+  }
 }
 
-func build_http(url string) (*http.Request) {
-  req, err := http.NewRequest("GET", url, nil)
+func build_http(url string,request string) (*http.Request) {
+  req, err := http.NewRequest(request, url, nil)
   if err != nil {
     log.Fatalln(err)
   }
@@ -244,8 +259,17 @@ func build_http(url string) (*http.Request) {
   return req
 }
 
+func http_head(url string) (http.Header) {
+  request := build_http(url, "HEAD")
+  client := &http.Client{}
+
+  resp,_ := client.Do(request)
+
+  return resp.Header
+}
+
 func http_get(url string, referrer string) (string) {
-  request := build_http(url)
+  request := build_http(url, "GET")
   client := &http.Client{}
 
   if (referrer != "") {
@@ -256,6 +280,22 @@ func http_get(url string, referrer string) (string) {
   body,_ := ioutil.ReadAll(resp.Body)
 
   return string(body)
+}
+
+func http_etag_get(url string, etag string, referrer string) (string,http.Header) {
+  request := build_http(url, "GET")
+  client := &http.Client{}
+
+  request.Header.Set("If-none-match",etag)
+
+  if (referrer != "") {
+    request.Header.Set("Referrer",referrer)
+  }
+
+  resp,_ := client.Do(request)
+  body,_ := ioutil.ReadAll(resp.Body)
+
+  return string(body),resp.Header
 }
 
 type TrackInfo struct {

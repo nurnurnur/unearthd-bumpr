@@ -8,6 +8,7 @@ import (
   "strconv"
   "bufio"
   "os"
+  "os/signal"
   "log"
   "net/http"
   "io/ioutil"
@@ -15,17 +16,31 @@ import (
   flag "launchpad.net/gnuflag"
 )
 
-const VERSION = "0.3"
+const VERSION = "0.4"
 
 var helpFlag = flag.Bool("help", false, "Show this screen")
 var tracksFlag = flag.String("tracks", "", "Comma separated list of track_ids eg. 123,231,122")
 var fileFlag = flag.String("file", "", "A file of line separated track_ids")
+var playedTracksCount = map[string]int{}
+var tracks []TrackInfo
 
 func output_welcome() {
   fmt.Println()
   fmt.Printf("Unearthd Track Bumpr - Version %s\n", VERSION)
   fmt.Println("Created by NUR (Never Underestimate Reason)")
   fmt.Println()
+}
+
+func exit_and_output_stats() {
+  fmt.Println()
+  fmt.Println("Exiting Unearthd Track Bumpr...")
+  fmt.Println()
+  fmt.Println("Track stats:")
+  for tracknum,track := range tracks {
+    play_count := playedTracksCount[track.ID]
+    fmt.Printf("%d. %s - %s [%d]\n", tracknum+1, track.ArtistTitle, track.Title, play_count)
+  }
+  os.Exit(0)
 }
 
 func output_help() {
@@ -91,6 +106,7 @@ func hit_jukebox(track_id int, artist_url string) (string) {
 }
 
 func hit_track_play(track_id string) {
+  fmt.Println("Hitting play URL...")
   url := build_play_url(track_id)
   http_get(url,"")
 }
@@ -112,7 +128,7 @@ func full_artist_url(path string) (string) {
 }
 
 func hit_mp3_url(url string, etag string) {
-  fmt.Println("Hitting mp3 URL..")
+  fmt.Println("Hitting mp3 URL...")
   http_etag_get(url,etag,"")
 }
 
@@ -170,6 +186,15 @@ func main() {
   var track_ids []int
   track_etags := map[string]string{}
 
+  // capture ctrl+c and stop CPU profiler
+  c := make(chan os.Signal, 1)
+  signal.Notify(c, os.Interrupt)
+  go func() {
+    for _ = range c {
+      exit_and_output_stats()
+    }
+  }()
+
   ok := true
 
   output_welcome()
@@ -187,7 +212,6 @@ func main() {
 
     if ok {
       var track_id int
-      var tracks []TrackInfo
 
       if len(track_ids) == 0 {
         for {
@@ -232,6 +256,7 @@ func main() {
 
             hit_mp3_url(track.URL,track_etags[track.URL])
             hit_track_play(track.ID)
+            playedTracksCount[track.ID]++
             sleep_for_track_length(track.Duration)
           }
         }

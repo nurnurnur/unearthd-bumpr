@@ -1,0 +1,18 @@
+#! /bin/bash
+NAME=unearthd-bumpr
+
+GOOS=windows GOARCH=386 go build -o pkg/${NAME}.exe unearthd-bumpr.go
+GOOS=linux GOARCH=386 go build -o pkg/${NAME}.linux unearthd-bumpr.go
+GOOS=linux GOARCH=amd64 go build -o pkg/${NAME}.linux64 unearthd-bumpr.go
+GOOS=darwin GOARCH=amd64 go build -o pkg/${NAME}.osx unearthd-bumpr.go
+
+cd pkg
+zip ${NAME}.win32.zip ${NAME}.exe track_ids.sample
+zip ${NAME}.linux.zip ${NAME}.linux track_ids.sample
+zip ${NAME}.linux64.zip ${NAME}.linux64 track_ids.sample
+zip ${NAME}.osx.zip ${NAME}.osx track_ids.sample
+
+mkdir -p ~/Dropbox/${NAME}/
+mv *.zip ~/Dropbox/${NAME}/
+
+cd -

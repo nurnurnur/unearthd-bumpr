@@ -1,18 +1,24 @@
 #! /bin/bash
 NAME=unearthd-bumpr
+VERSION=0.4.1
+MINVERSION=`date -u +%Y%m%d%.%H%M%S`
+LDFLAGS="-s -w -X main.MINVERSION ${MINVERSION} -X main.VERSION ${VERSION}"
+OUTFILE=pkg/${VERSION}/${NAME}
 
-GOOS=windows GOARCH=386 go build -o pkg/${NAME}.exe unearthd-bumpr.go
-GOOS=linux GOARCH=386 go build -o pkg/${NAME}.linux unearthd-bumpr.go
-GOOS=linux GOARCH=amd64 go build -o pkg/${NAME}.linux64 unearthd-bumpr.go
-GOOS=darwin GOARCH=amd64 go build -o pkg/${NAME}.osx unearthd-bumpr.go
+GOOS=windows GOARCH=386 go build -ldflags "${LDFLAGS}" -o ${OUTFILE}.exe ${NAME}.go
+GOOS=linux GOARCH=386 go build -ldflags "${LDFLAGS}" -o ${OUTFILE}.linux ${NAME}.go
+GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o ${OUTFILE}.linux64 ${NAME}.go
+GOOS=darwin GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o ${OUTFILE}.osx ${NAME}.go
 
-cd pkg
-zip ${NAME}.win32.zip ${NAME}.exe track_ids.sample
-zip ${NAME}.linux.zip ${NAME}.linux track_ids.sample
-zip ${NAME}.linux64.zip ${NAME}.linux64 track_ids.sample
-zip ${NAME}.osx.zip ${NAME}.osx track_ids.sample
+if [[ $1 == "release" ]]; then
+  cd pkg
+  zip ${NAME}-${VERSION}.win32.zip ${NAME}.exe track_ids.sample
+  zip ${NAME}-${VERSION}.linux.zip ${NAME}.linux track_ids.sample
+  zip ${NAME}-${VERSION}.linux64.zip ${NAME}.linux64 track_ids.sample
+  zip ${NAME}-${VERSION}.osx.zip ${NAME}.osx track_ids.sample
 
-mkdir -p ~/Dropbox/${NAME}/
-mv *.zip ~/Dropbox/${NAME}/
+  mkdir -p ~/Dropbox/${NAME}/
+  mv *.zip ~/Dropbox/${NAME}/
 
-cd -
+  cd -
+fi

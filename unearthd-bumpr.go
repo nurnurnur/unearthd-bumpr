@@ -12,11 +12,14 @@ import (
   "log"
   "net/http"
   "io/ioutil"
-  "./confirm"
+  "github.com/nurnurnur/unearthd-bumpr/confirm"
+  "github.com/nurnurnur/unearthd-bumpr/term"
+  "syscall"
   flag "launchpad.net/gnuflag"
 )
 
-const VERSION = "0.4"
+var VERSION string
+var MINVERSION string
 
 var helpFlag = flag.Bool("help", false, "Show this screen")
 var tracksFlag = flag.String("tracks", "", "Comma separated list of track_ids eg. 123,231,122")
@@ -24,18 +27,22 @@ var fileFlag = flag.String("file", "", "A file of line separated track_ids")
 var playedTracksCount = map[string]int{}
 var tracks []TrackInfo
 
+var HTTP_ERR_RETRY = time.Duration(10)
+var HTTP_GET_ERROR = "HTTP GET for %s failed.\nWaiting 10s and trying again.."
+var HTTP_ETAG_GET_ERROR = "ETAG cached HTTP GET for %s failed.\nWaiting 10s and trying again.."
+
 func output_welcome() {
   fmt.Println()
-  fmt.Printf("Unearthd Track Bumpr - Version %s\n", VERSION)
+  fmt.Printf("Unearthd Track Bumpr - v%s\n", VERSION)
   fmt.Println("Created by NUR (Never Underestimate Reason)")
   fmt.Println()
 }
 
 func exit_and_output_stats() {
   fmt.Println()
-  fmt.Println("Exiting Unearthd Track Bumpr...")
+  fmt.Println(term.Red+"Exiting Unearthd Track Bumpr..."+term.Reset)
   fmt.Println()
-  fmt.Println("Track stats:")
+  fmt.Println(term.Green+"Track stats:"+term.Reset)
   for tracknum,track := range tracks {
     play_count := playedTracksCount[track.ID]
     fmt.Printf("%d. %s - %s [%d]\n", tracknum+1, track.ArtistTitle, track.Title, play_count)
@@ -44,6 +51,7 @@ func exit_and_output_stats() {
 }
 
 func output_help() {
+  fmt.Printf("Built on: %s\n", MINVERSION)
   flag.Usage()
 }
 
@@ -88,7 +96,7 @@ func get_track_info(track_id int) (*TrackInfoCollection) {
   tic := new(TrackInfoCollection)
 
   if err := tic.FromJson(output); err != nil {
-    fmt.Printf("ERROR: %v", err)
+    fmt.Printf(term.Red+"ERROR: %v"+term.Reset, err)
   }
 
   return tic
@@ -149,7 +157,7 @@ func track_ids_from_file_flag() ([]int) {
   var track_ids []int
   file,err := os.Open(*fileFlag)
   if err != nil {
-    log.Fatalln("Error opening file")
+    log.Fatalln(term.Red+"Error opening file"+term.Reset)
   }
   defer file.Close()
   scanner := bufio.NewScanner(file)
@@ -189,10 +197,11 @@ func main() {
   // capture ctrl+c and stop CPU profiler
   c := make(chan os.Signal, 1)
   signal.Notify(c, os.Interrupt)
+  signal.Notify(c, syscall.SIGQUIT)
+  signal.Notify(c, syscall.SIGTERM)
   go func() {
-    for _ = range c {
-      exit_and_output_stats()
-    }
+    <-c
+    exit_and_output_stats()
   }()
 
   ok := true
@@ -249,12 +258,12 @@ func main() {
 
             fmt.Printf("Playing %s-%s\n",track.ArtistTitle, track.Title)
 
-            if track_etags[track.URL] == "" {
-              url_headers := http_head(track.URL)
-              track_etags[track.URL] = url_headers["Etag"][0]
+            if track_etags[track.URL128] == "" {
+              url_headers := http_head(track.URL128)
+              track_etags[track.URL128] = url_headers["Etag"][0]
             }
 
-            hit_mp3_url(track.URL,track_etags[track.URL])
+            hit_mp3_url(track.URL128,track_etags[track.URL128])
             hit_track_play(track.ID)
             playedTracksCount[track.ID]++
             sleep_for_track_length(track.Duration)
@@ -301,10 +310,15 @@ func http_get(url string, referrer string) (string) {
     request.Header.Set("Referrer",referrer)
   }
 
-  resp,_ := client.Do(request)
-  body,_ := ioutil.ReadAll(resp.Body)
-
-  return string(body)
+  resp,err := client.Do(request)
+  if(err != nil) {
+    log.Println(term.Red+fmt.Sprintf(HTTP_GET_ERROR, url)+term.Reset)
+    time.Sleep(HTTP_ERR_RETRY)
+    return http_get(url,referrer)
+  } else {
+    body,_ := ioutil.ReadAll(resp.Body)
+    return string(body)
+  }
 }
 
 func http_etag_get(url string, etag string, referrer string) (string,http.Header) {
@@ -317,10 +331,15 @@ func http_etag_get(url string, etag string, referrer string) (string,http.Header
     request.Header.Set("Referrer",referrer)
   }
 
-  resp,_ := client.Do(request)
-  body,_ := ioutil.ReadAll(resp.Body)
-
-  return string(body),resp.Header
+  resp,err := client.Do(request)
+  if(err != nil) {
+    log.Println(term.Red+fmt.Sprintf(HTTP_ETAG_GET_ERROR,url)+term.Reset)
+    time.Sleep(HTTP_ERR_RETRY)
+    return http_etag_get(url,etag,referrer)
+  } else {
+    body,_ := ioutil.ReadAll(resp.Body)
+    return string(body),resp.Header
+  }
 }
 
 type TrackInfo struct {
@@ -343,7 +362,7 @@ type TrackInfo struct {
   PlayedOn string `json:"track_played_on,omitempty"`
   Rating string `json:"track_rating,omitempty"`
   ReviewCount string `json:"track_review_count,omitempty"`
-  URL128 string `json:"url_for_the_128k_media,omitempty"`
+  URL128 string `json:"url for the 128k media,omitempty"`
   URL string `json:"track_url,omitempty"`
   Title string `json:"track_title,omitempty"`
 }

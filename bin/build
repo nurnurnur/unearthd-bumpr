@@ -3,7 +3,8 @@ NAME=unearthd-bumpr
 VERSION=0.4.1
 MINVERSION=`date -u +%Y%m%d%.%H%M%S`
 LDFLAGS="-s -w -X main.MINVERSION ${MINVERSION} -X main.VERSION ${VERSION}"
-OUTFILE=pkg/${VERSION}/${NAME}
+VERSION_DIR=pkg/${VERSION}/
+OUTFILE=${VERSION_DIR}${NAME}
 
 GOOS=windows GOARCH=386 go build -ldflags "${LDFLAGS}" -o ${OUTFILE}.exe ${NAME}.go
 GOOS=linux GOARCH=386 go build -ldflags "${LDFLAGS}" -o ${OUTFILE}.linux ${NAME}.go
@@ -11,11 +12,11 @@ GOOS=linux GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o ${OUTFILE}.linux64 ${N
 GOOS=darwin GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o ${OUTFILE}.osx ${NAME}.go
 
 if [[ $1 == "release" ]]; then
-  cd pkg
-  zip ${NAME}-${VERSION}.win32.zip ${NAME}.exe track_ids.sample
-  zip ${NAME}-${VERSION}.linux.zip ${NAME}.linux track_ids.sample
-  zip ${NAME}-${VERSION}.linux64.zip ${NAME}.linux64 track_ids.sample
-  zip ${NAME}-${VERSION}.osx.zip ${NAME}.osx track_ids.sample
+  cd ${VERSION_DIR}
+  zip ${NAME}-${VERSION}.win32.zip ${NAME}.exe ../track_ids.sample
+  zip ${NAME}-${VERSION}.linux.zip ${NAME}.linux ../track_ids.sample
+  zip ${NAME}-${VERSION}.linux64.zip ${NAME}.linux64 ../track_ids.sample
+  zip ${NAME}-${VERSION}.osx.zip ${NAME}.osx ../track_ids.sample
 
   mkdir -p ~/Dropbox/${NAME}/
   mv *.zip ~/Dropbox/${NAME}/

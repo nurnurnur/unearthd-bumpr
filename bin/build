@@ -1,6 +1,6 @@
 #! /bin/bash
 NAME=unearthd-bumpr
-VERSION=0.4.1
+VERSION=0.4.2
 MINVERSION=`date -u +%Y%m%d%.%H%M%S`
 LDFLAGS="-s -w -X main.MINVERSION ${MINVERSION} -X main.VERSION ${VERSION}"
 VERSION_DIR=pkg/${VERSION}/

@@ -32,6 +32,7 @@ var HTTP_GET_ERROR = "HTTP GET for %s failed.\nWaiting 10s and trying again.."
 var HTTP_ETAG_GET_ERROR = "ETAG cached HTTP GET for %s failed.\nWaiting 10s and trying again.."
 
 func output_welcome() {
+  fmt.Printf("\033]0;unearthd-bumpr v%s\007", VERSION)
   fmt.Println()
   fmt.Printf("Unearthd Track Bumpr - v%s\n", VERSION)
   fmt.Println("Created by NUR (Never Underestimate Reason)")

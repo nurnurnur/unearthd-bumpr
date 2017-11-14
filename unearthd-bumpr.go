@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"github.com/nurnurnur/unearthd-bumpr/confirm"
 	"github.com/nurnurnur/unearthd-bumpr/term"
@@ -21,6 +22,8 @@ import (
 var VERSION string
 var MINVERSION string
 
+var NAME string = "Unearthd Track Bumpr"
+
 var helpFlag = flag.Bool("help", false, "Show this screen")
 var tracksFlag = flag.String("tracks", "", "Comma separated list of track_ids eg. 123,231,122")
 var fileFlag = flag.String("file", "", "A file of line separated track_ids")
@@ -35,7 +38,7 @@ var HTTP_ETAG_GET_ERROR = "ETAG cached HTTP GET for %s failed.\nWaiting 10s and 
 func output_welcome() {
 	fmt.Printf("\033]0;unearthd-bumpr v%s\007", VERSION)
 	fmt.Println()
-	fmt.Printf("Unearthd Track Bumpr - v%s\n", VERSION)
+	fmt.Printf("%s - v%s\n", NAME, VERSION)
 	fmt.Println("Created by NUR (Never Underestimate Reason)")
 	fmt.Println("'It ain't no fun, if the homies can't have none'")
 	fmt.Println()
@@ -43,7 +46,7 @@ func output_welcome() {
 
 func exit_and_output_stats() {
 	fmt.Println()
-	fmt.Println(term.Red + "Exiting Unearthd Track Bumpr..." + term.Reset)
+	fmt.Printf(term.Red + "Exiting %s..." + term.Reset,NAME)
 	fmt.Println()
 	fmt.Println(term.Green + "Track stats:" + term.Reset)
 	for tracknum, track := range tracks {
@@ -98,7 +101,8 @@ func get_track_info(track_id int) *TrackInfoCollection {
 
 	tic := new(TrackInfoCollection)
 
-	if err := tic.FromJson(output); err != nil {
+	fmt.Println(output)
+	if err := tic.FromXML(output); err != nil {
 		fmt.Printf(term.Red+"ERROR: %v"+term.Reset, err)
 	}
 
@@ -113,7 +117,7 @@ func get_playlist_info(playlist_id string) *TrackInfoCollection {
 
 	tic := new(TrackInfoCollection)
 
-	if err := tic.FromJson(output); err != nil {
+	if err := tic.FromXML(output); err != nil {
 		fmt.Printf(term.Red+"ERROR: %v"+term.Reset, err)
 	}
 
@@ -165,6 +169,11 @@ func hit_mp3_url(url string, etag string) {
 	fmt.Println("Hitting mp3 URL...")
 	http_etag_get(url, etag, "")
 }
+
+func hit_user_url() {
+	http_get("https://www.triplejunearthed.com/api/jukebox/rest/views/user")
+}
+
 
 func track_ids_from_tracks_flag() []int {
 	var track_ids []int
@@ -218,7 +227,7 @@ func track_ids_from_stdin() []int {
 
 func main() {
 	var track_ids []int
-	track_etags := map[string]string{}
+	etags := map[string]string{}
 
 	// capture ctrl+c and stop
 	c := make(chan os.Signal, 1)
@@ -294,12 +303,13 @@ func main() {
 
 						fmt.Printf("Playing %s-%s [%d]\n", track.ArtistTitle, track.Title, playedTracksCount[track.ID])
 
-						if track_etags[track.URL128] == "" {
+						if etags[track.URL128] == "" {
 							url_headers := http_head(track.URL128)
-							track_etags[track.URL128] = url_headers["Etag"][0]
+							etags[track.URL128] = url_headers["Etag"][0]
 						}
 
-						hit_mp3_url(track.URL128, track_etags[track.URL128])
+						// hit_user_url()
+						hit_mp3_url(track.URL128, etags[track.URL128])
 						hit_track_play(track.ID)
 						playedTracksCount[track.ID]++
 						sleep_for_track_length(track.Duration)
@@ -307,7 +317,7 @@ func main() {
 				}
 			} else {
 				fmt.Println()
-				fmt.Println("Exiting unearthd-bumpr...")
+				fmt.Printf("Exiting %s...",NAME)
 				fmt.Println()
 				os.Exit(2)
 			}
@@ -322,9 +332,9 @@ func build_http(url string, request string) *http.Request {
 		log.Fatalln(err)
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.131 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36")
 	req.Header.Add("X-Requested-With", "XMLHttpRequest")
-	req.Header.Set("Accept", "application/json, text/javascript, */*")
+	req.Header.Set("Accept", "*/*")
 
 	return req
 }
@@ -379,40 +389,45 @@ func http_etag_get(url string, etag string, referrer string) (string, http.Heade
 }
 
 type TrackInfo struct {
-	ArtistBio         string `json:"artist_bio,omitempty"`
-	ArtistFollowCount string `json:"artist_follow_count,omitempty"`
-	ArtistImageSmall  string `json:"artist_image_small,omitempty"`
-	ArtistID          string `json:"artist_id,omitempty"`
-	ArtistLocation    string `json:"artist_location,omitempty"`
-	ArtistProfileURL  string `json:"artist_profile_url,omitempty"`
-	ArtistTitle       string `json:"artist_title,omitempty"`
-	Approved          string `json:"track_approved,omitempty"`
-	ChartPos          string `json:"track_chart_pos,omitempty"`
-	DownloadCount     string `json:"track_download_count,omitempty"`
-	Duration          string `json:"track_duration,omitempty"`
-	Genres            string `json:"track_genres,omitempty"`
-	ID                string `json:"track_id,omitempty"`
-	LoveCount         string `json:"track_love_count,omitempty"`
-	Mature            string `json:"track_mature,omitempty"`
-	PlayCount         string `json:"track_play_count,omitempty"`
-	PlayedOn          string `json:"track_played_on,omitempty"`
-	PlaylistDesc      string `json:"playlist_description,omitempty"`
-	PlaylistTitle     string `json:"playlist_title,omitempty"`
-	Rating            string `json:"track_rating,omitempty"`
-	ReviewCount       string `json:"track_review_count,omitempty"`
-	URL128            string `json:"url for the 128k media,omitempty"`
-	URL               string `json:"track_url,omitempty"`
-	Title             string `json:"track_title,omitempty"`
+	ArtistBio         string `xml:"artist_bio,omitempty" json:"artist_bio,omitempty"`
+	ArtistFollowCount string `xml:"artist_follow_count,omitempty" json:"artist_follow_count,omitempty"`
+	ArtistImageSmall  string `xml:"artist_image_small,omitempty" json:"artist_image_small,omitempty"`
+	ArtistID          string `xml:"artist_id,omitempty" json:"artist_id,omitempty"`
+	ArtistLocation    string `xml:"artist_location,omitempty" json:"artist_location,omitempty"`
+	ArtistProfileURL  string `xml:"artist_profile_url,omitempty" json:"artist_profile_url,omitempty"`
+	ArtistTitle       string `xml:"artist_title,omitempty" json:"artist_title,omitempty"`
+	Approved          string `xml:"track_approved,omitempty" json:"track_approved,omitempty"`
+	ChartPos          string `xml:"track_chart_pos,omitempty" json:"track_chart_pos,omitempty"`
+	DownloadCount     string `xml:"track_download_count,omitempty" json:"track_download_count,omitempty"`
+	Duration          string `xml:"track_duration,omitempty" json:"track_duration,omitempty"`
+	Genres            string `xml:"track_genres,omitempty" json:"track_genres,omitempty"`
+	ID                string `xml:"track_id,omitempty" json:"track_id,omitempty"`
+	LoveCount         string `xml:"track_love_count,omitempty" json:"track_love_count,omitempty"`
+	Mature            string `xml:"track_mature,omitempty" json:"track_mature,omitempty"`
+	PlayCount         string `xml:"track_play_count,omitempty" json:"track_play_count,omitempty"`
+	PlayedOn          string `xml:"track_played_on,omitempty" json:"track_played_on,omitempty"`
+	PlaylistDesc      string `xml:"playlist_description,omitempty" json:"playlist_description,omitempty"`
+	PlaylistTitle     string `xml:"playlist_title,omitempty" json:"playlist_title,omitempty"`
+	Rating            string `xml:"track_rating,omitempty" json:"track_rating,omitempty"`
+	ReviewCount       string `xml:"track_review_count,omitempty" json:"track_review_count,omitempty"`
+	URL128            string `xml:"url_for_the_128k_media,omitempty" json:"url for the 128k media,omitempty"`
+	URL               string `xml:"track_url,omitempty" json:"track_url,omitempty"`
+	Title             string `xml:"track_title,omitempty" json:"track_title,omitempty"`
 }
 
 type TrackInfoCollection struct {
-	Tracks []TrackInfo
+	XMLName xml.Name `xml:"result"`
+	Tracks []TrackInfo `xml:"item"`
 }
 
 func (tic *TrackInfoCollection) FromJson(jsonStr string) error {
 	var data = &tic.Tracks
 	decoder := json.NewDecoder(strings.NewReader(jsonStr))
 	return decoder.Decode(&data)
+}
+
+func (tic *TrackInfoCollection) FromXML(xmlStr string) error {
+	return xml.Unmarshal([]byte(xmlStr),&tic)
 }
 
 func (tic *TrackInfoCollection) FromTrackIds(track_ids []int) {
